@@ -62,7 +62,7 @@ py -3.12 -m venv .venv
 .venv/Scripts/python.exe main.py examples/localized/en/branches.advdb
 ```
 
-If an iCloud folder marks Qt plugins as hidden on macOS, use `zsh scripts/run_macos.sh`.
+If Qt cannot find its plugins on macOS, use `zsh scripts/run_macos.sh` to clear hidden plugin flags before launching.
 
 ## Ren’Py integration
 

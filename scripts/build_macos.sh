@@ -5,7 +5,7 @@ if [[ "$(uname -m)" != arm64 ]]; then
   echo '請在 Apple Silicon 原生 arm64 終端執行。'
   exit 1
 fi
-# 在非 iCloud 暫存目錄產生及簽章，避免 File Provider 持續附加 FinderInfo。
+# Build and sign in a local temporary directory to avoid provider metadata.
 staging=$(mktemp -d /private/tmp/adv-build.XXXXXX)
 export PYINSTALLER_CONFIG_DIR="$staging/cache"
 .venv/bin/python -m PyInstaller --noconfirm --clean --windowed --name 'RenPy Text Editor' --osx-bundle-identifier com.advscript.editor --target-architecture arm64 --collect-data adv_editor --collect-all docx --collect-all reportlab --distpath "$staging/dist" --workpath "$staging/work" main.py

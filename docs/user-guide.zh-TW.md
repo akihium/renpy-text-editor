@@ -12,7 +12,7 @@ python3.12 -m venv .venv
 .venv/bin/python main.py examples/localized/zh_TW/sample.advdb
 ```
 
-本次開發環境已建立 `.venv`，可直接執行最後一行。若專案位於 iCloud，建議以 `./scripts/run_macos.sh examples/localized/zh_TW/branches.advdb` 啟動；腳本會修正可能再次附加的 Qt 外掛隱藏屬性。macOS 內建的 Python 3.9 不適用；請使用 Python 3.11 以上版本。首次安裝需要網路，程式運行不需要。若在 iCloud 資料夾安裝後遇到 Qt 找不到外掛，請執行 `chflags -R nohidden .venv` 後重試；本次環境已修正。
+完成上述安裝後，可直接執行最後一行。也可使用 `./scripts/run_macos.sh examples/localized/zh_TW/branches.advdb` 啟動；腳本會清除可能影響 Qt 外掛載入的隱藏屬性。macOS 內建的 Python 3.9 不適用；請使用 Python 3.11 以上版本。首次安裝需要網路，程式運行不需要。
 
 ## 使用流程
 
@@ -60,7 +60,7 @@ QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest -q
 ./scripts/build_macos.sh
 ```
 
-測試使用真正的 Qt 編輯元件與 QTest 按鍵事件，涵蓋導航、格式、換行、貼上、排序、復原、SQLite、備份、Excel 與 Ren’Py 匯出。打包結果是 `dist/RenPy-Text-Editor-macOS-arm64.zip`，內含已做 ad-hoc 簽章的 `.app`。請解壓縮到本機非 iCloud 資料夾後開啟（建議「應用程式」）。打包腳本使用 `/private/tmp` 暫存資料夾完成並驗證簽章，以免 iCloud 附加 FinderInfo 導致簽章失敗。公開散布需另行 Developer ID 簽章與公證。
+測試使用真正的 Qt 編輯元件與 QTest 按鍵事件，涵蓋導航、格式、換行、貼上、排序、復原、SQLite、備份、Excel 與 Ren’Py 匯出。打包結果是 `dist/RenPy-Text-Editor-macOS-arm64.zip`，內含已做 ad-hoc 簽章的 `.app`。請解壓縮到本機資料夾後開啟（建議「應用程式」）。打包腳本使用 `/private/tmp` 暫存資料夾完成並驗證簽章，避免同步服務附加的中繼資料影響簽章。公開散布需另行 Developer ID 簽章與公證。
 
 ## MVP 限制
 
