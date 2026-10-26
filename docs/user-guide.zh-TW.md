@@ -60,7 +60,7 @@ QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest -q
 ./scripts/build_macos.sh
 ```
 
-測試使用真正的 Qt 編輯元件與 QTest 按鍵事件，涵蓋導航、格式、換行、貼上、排序、復原、SQLite、備份、Excel 與 Ren’Py 匯出。打包結果是 `dist/RenPy Text Editor-macOS-arm64.zip`，內含已做 ad-hoc 簽章的 `.app`。請解壓縮到本機非 iCloud 資料夾後開啟（建議「應用程式」）。打包腳本使用 `/private/tmp` 暫存資料夾完成並驗證簽章，以免 iCloud 附加 FinderInfo 導致簽章失敗。公開散布需另行 Developer ID 簽章與公證。
+測試使用真正的 Qt 編輯元件與 QTest 按鍵事件，涵蓋導航、格式、換行、貼上、排序、復原、SQLite、備份、Excel 與 Ren’Py 匯出。打包結果是 `dist/RenPy-Text-Editor-macOS-arm64.zip`，內含已做 ad-hoc 簽章的 `.app`。請解壓縮到本機非 iCloud 資料夾後開啟（建議「應用程式」）。打包腳本使用 `/private/tmp` 暫存資料夾完成並驗證簽章，以免 iCloud 附加 FinderInfo 導致簽章失敗。公開散布需另行 Developer ID 簽章與公證。
 
 ## MVP 限制
 

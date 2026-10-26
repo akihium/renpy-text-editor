@@ -21,6 +21,6 @@ mkdir -p "$package" dist
 .venv/bin/python scripts/prepare_distribution.py "$package"
 ditto "$staging/dist/RenPy Text Editor.app" "$package/RenPy Text Editor.app"
 codesign --verify --deep --strict "$package/RenPy Text Editor.app"
-ditto -c -k --keepParent "$package" 'dist/RenPy Text Editor-macOS-arm64.zip' 
-echo "已打包：dist/RenPy Text Editor-macOS-arm64.zip"
+ditto -c -k --keepParent "$package" 'dist/RenPy-Text-Editor-macOS-arm64.zip' 
+echo "已打包：dist/RenPy-Text-Editor-macOS-arm64.zip"
 echo "已驗證的 .app：$staging/dist/RenPy Text Editor.app"

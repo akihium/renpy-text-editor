@@ -30,8 +30,8 @@ Get the latest package from [Releases](https://github.com/akihium/renpy-text-edi
 
 | Platform | Package | Launch |
 | --- | --- | --- |
-| Windows 10/11 x64 | `RenPy Text Editor-Windows-x64.zip` | Extract the whole folder, then open `RenPy Text Editor.exe` |
-| macOS 14+ Apple Silicon | `RenPy Text Editor-macOS-arm64.zip` | Extract the folder, then open `RenPy Text Editor.app` |
+| Windows 10/11 x64 | `RenPy-Text-Editor-Windows-x64.zip` | Extract the whole folder, then open `RenPy Text Editor.exe` |
+| macOS 14+ Apple Silicon | `RenPy-Text-Editor-macOS-arm64.zip` | Extract the folder, then open `RenPy Text Editor.app` |
 
 The executable depends on the other files in the package. **Keep the whole extracted folder.** These are portable builds; no paid developer signing certificate or macOS notarization is applied.
 

@@ -11,6 +11,6 @@ $Process = Start-Process -FilePath 'dist/RenPy Text Editor/RenPy Text Editor.exe
 if ($Process.ExitCode -ne 0 -or -not (Test-Path "$Verification/result.json")) { throw 'Packaged EXE export check failed.' }
 $Result = Get-Content "$Verification/result.json" -Raw | ConvertFrom-Json
 if (-not $Result.ok) { throw 'Packaged EXE check returned failure.' }
-$Archive = 'dist/RenPy Text Editor-Windows-x64.zip'
+$Archive = 'dist/RenPy-Text-Editor-Windows-x64.zip'
 Compress-Archive -Path 'dist/RenPy Text Editor' -DestinationPath $Archive -Force
 Write-Host "Created $Archive (extract the whole folder, then run RenPy Text Editor.exe)"

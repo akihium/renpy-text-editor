@@ -1,4 +1,4 @@
-## Ren’Py Text Editor 0.1.0
+## Ren’Py Text Editor 0.1.1
 
 An offline dialogue editor for visual novel writers, with Windows x64 and macOS Apple Silicon packages.
 
@@ -13,10 +13,14 @@ An offline dialogue editor for visual novel writers, with Windows x64 and macOS 
 - English, 日本語, 简体中文 and 繁體中文 interfaces.
 - Four localized example sets in `examples/en`, `examples/ja`, `examples/zh_CN` and `examples/zh_TW`.
 
+### Release packaging fix
+
+Archive filenames now use hyphens so GitHub keeps the filenames identical to `SHA256SUMS.txt`. Application features are unchanged.
+
 ### Downloads
 
-- **Windows**: extract `RenPy Text Editor-Windows-x64.zip` completely, then launch the EXE inside the folder.
-- **macOS Apple Silicon**: extract `RenPy Text Editor-macOS-arm64.zip`, then open the app inside the folder.
+- **Windows**: extract `RenPy-Text-Editor-Windows-x64.zip` completely, then launch the EXE inside the folder.
+- **macOS Apple Silicon**: extract `RenPy-Text-Editor-macOS-arm64.zip`, then open the app inside the folder.
 - **Source**: use the source archive or clone the repository. License: MIT; dependencies retain their licenses.
 - Verify archive integrity using `SHA256SUMS.txt`.
 
