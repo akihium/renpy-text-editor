@@ -1,5 +1,8 @@
 # Ren’Py Text Editor
 
+[![macOS · Apple Silicon](https://img.shields.io/badge/macOS-Apple%20Silicon-555555?style=flat-square&logo=apple&logoColor=white)](https://github.com/akihium/renpy-text-editor/releases/latest/download/RenPy-Text-Editor-macOS-arm64.zip)
+[![Windows · x64](https://img.shields.io/badge/Windows-x64-0078D4?style=flat-square)](https://github.com/akihium/renpy-text-editor/releases/latest/download/RenPy-Text-Editor-Windows-x64.zip)
+
 **Write visual novel dialogue in a table, preview formatting as you type, and export clean Ren’Py scripts.**
 
 Ren’Py Text Editor is an offline desktop application for writers who want to focus on characters, dialogue and notes. It uses Python, PySide6 and SQLite, with portable builds for **Windows x64** and **macOS Apple Silicon**.
