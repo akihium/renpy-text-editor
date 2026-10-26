@@ -1,0 +1,76 @@
+name: Build and publish
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Release version (without v)
+        required: true
+        default: '0.1.0'
+permissions:
+  contents: read
+concurrency:
+  group: release-${{ inputs.version }}
+  cancel-in-progress: false
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-15]
+    runs-on: ${{ matrix.os }}
+    env:
+      QT_QPA_PLATFORM: offscreen
+      PYTHONUTF8: '1'
+      RELEASE_VERSION: ${{ inputs.version }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - name: Validate version
+        run: python -c "import os,re; assert re.fullmatch(r'[0-9]+\.[0-9]+\.[0-9]+', os.environ['RELEASE_VERSION'])"
+      - run: python -m venv .venv
+      - if: runner.os == 'Windows'
+        run: .venv/Scripts/python.exe -m pip install -r requirements.txt
+      - if: runner.os == 'macOS'
+        run: .venv/bin/python -m pip install -r requirements.txt
+      - if: runner.os == 'Windows'
+        run: .venv/Scripts/python.exe -m pytest -q
+      - if: runner.os == 'macOS'
+        run: .venv/bin/python -m pytest -q
+      - name: Build and check Windows EXE
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: ./scripts/build_windows.ps1
+      - name: Build and check macOS app
+        if: runner.os == 'macOS'
+        run: zsh scripts/build_macos.sh
+      - uses: actions/upload-artifact@v7
+        with:
+          name: release-${{ runner.os }}
+          path: dist/*.zip
+          if-no-files-found: error
+          retention-days: 14
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      RELEASE_VERSION: ${{ inputs.version }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: release-*
+          path: packages
+          merge-multiple: true
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - name: Create source archive
+        run: git archive --format=zip --prefix="renpy-text-editor-v$RELEASE_VERSION/" --output="packages/RenPy-Text-Editor-source-v$RELEASE_VERSION.zip" HEAD
+      - run: python scripts/checksums.py packages
+      - name: Publish tested packages
+        run: gh release create "v$RELEASE_VERSION" packages/*.zip packages/SHA256SUMS.txt --target "$GITHUB_SHA" --title "Ren’Py Text Editor v$RELEASE_VERSION" --notes-file docs/release-notes.md

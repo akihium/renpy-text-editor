@@ -1,0 +1,43 @@
+# Runtime and build products
+.venv/
+venv/
+__pycache__/
+.pytest_cache/
+*.py[cod]
+build/
+dist/
+*.spec
+*.egg-info/
+# Private projects, exports and backups are opt-in only
+*.advdb
+*_assets/
+*_backups/
+*.xlsx
+*.docx
+*.pdf
+adv_generated/
+# Only curated examples are public
+!examples/sample.advdb
+!examples/branches.advdb
+!examples/sample.xlsx
+!examples/branches.xlsx
+!examples/branches_assets/
+!examples/branches_assets/**
+!examples/renpy_game/adv_generated/
+!examples/renpy_game/adv_generated/**
+!examples/branches_game/adv_generated/
+!examples/branches_game/adv_generated/**
+# Local OS/editor/auth files
+.DS_Store
+Thumbs.db
+Desktop.ini
+.env
+.env.*
+!.env.example
+.codex/
+.agents/
+.aws/
+.config/
+!examples/localized/
+!examples/localized/**
+smoke-output/
