@@ -5,15 +5,18 @@ import html
 import io
 import re
 from pathlib import Path
-from PySide6.QtCore import Qt, QTimer, QEvent, QSettings, QUrl
+from PySide6.QtCore import Qt, QTimer, QEvent, QUrl
 from PySide6.QtGui import QAction, QKeySequence, QTextDocument, QColor, QBrush, QDesktopServices
 from PySide6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QTableWidget, QTableWidgetItem, QStyledItemDelegate, QPlainTextEdit, QComboBox,
     QFileDialog, QMessageBox, QInputDialog, QLineEdit, QPushButton, QLabel, QAbstractItemView,
-    QStyle, QStyleOptionViewItem, QCheckBox, QSpinBox, QDoubleSpinBox, QColorDialog, QSizePolicy)
+    QStyle, QStyleOptionViewItem, QCheckBox, QSpinBox, QDoubleSpinBox, QColorDialog, QSizePolicy, QDialog, QTextBrowser, QDialogButtonBox)
 from .i18n import tr,APP_NAME,LANGUAGES,set_language,retranslate
-from . import i18n
-from .core import Database, sample, new_row, uid, identifier, statement, export_rpy, export_excel, import_excel
+from . import i18n, __version__
+from .about import AboutDialog
+from .help_content import help_html
+from .preferences import settings
+from .core import Database, sample, new_row, uid, identifier, statement, export_rpy, export_excel, import_excel, label_name
 
 
 from .richtext import RichCellEditor, load_source, TagRenderer, OBJECT
@@ -23,6 +26,8 @@ from .stage import StageDialog, KINDS
 from .assets import asset_folder, copy_assets, import_font, register_fonts
 from .character_ops import update_characters
 from .export_options import DocumentExportDialog
+from .rpy_options import RenPyExportDialog
+from .projects import (create_project, remember_project, default_directory, load_heights, save_heights)
 
 
 def editor_source(editor):
@@ -98,7 +103,7 @@ class Delegate(QStyledItemDelegate):
         if editor is not self.window.editor or editor.row>=len(self.window.rows): return
         row = dict(self.window.rows[editor.row])
         row[('','character','text','note')[editor.col]] = editor_source(editor)
-        self.window.table.item(editor.row,0).setText(statement(row,include_ids=self.window.show_ids.isChecked()))
+        self.window.table.item(editor.row,0).setText(statement(row,include_ids=self.window.show_ids.isChecked(),label_prefix=self.window.data.get('label_prefix','adv_')))
 
     def setEditorData(self, editor, index):
         value = index.data(Qt.ItemDataRole.EditRole) or ''
@@ -161,7 +166,9 @@ class Delegate(QStyledItemDelegate):
 class Window(QMainWindow):
     def __init__(self, path=None):
         super().__init__()
-        set_language(QSettings('ADVScript','Editor').value('language','zh_TW'))
+        set_language(settings().value('language','zh_TW'))
+        self.row_heights = {}
+        self._resizing_rows = False
         self.document_title=None
         self.db = None
         self.data = sample()
@@ -177,7 +184,7 @@ class Window(QMainWindow):
         self.setCentralWidget(base)
         layout = QVBoxLayout(base)
         project_bar=QHBoxLayout()
-        for title,callback in [(tr('新增專案'),self.new_project),(tr('開啟專案'),self.open_dialog),(tr('儲存'),self.save),(tr('另存／變更位置'),lambda:self.save(True)),(tr('專案資料夾'),self.open_project_folder),(tr('匯出 Word'),lambda:self.document_out('docx')),(tr('匯出 PDF'),lambda:self.document_out('pdf'))]:
+        for title,callback in [(tr('新增專案'),self.new_project),(tr('開啟專案'),self.open_dialog),(tr('儲存'),self.save),(tr('另存／變更位置'),lambda:self.save(True)),(tr('專案資料夾'),self.open_project_folder),(tr('匯出 .rpy'),self.export),(tr('匯出 Word'),lambda:self.document_out('docx')),(tr('匯出 PDF'),lambda:self.document_out('pdf'))]:
             button=QPushButton(title);button.clicked.connect(callback);project_bar.addWidget(button)
         self.project_location=QLabel(tr('尚未選擇專案位置'))
         self.project_location.setProperty('project_content',True)
@@ -201,7 +208,7 @@ class Window(QMainWindow):
         self.character_button.clicked.connect(self.characters)
         top.addWidget(self.character_button)
         self.role_background = QCheckBox(tr('角色欄背景色'))
-        self.role_background.setChecked(QSettings('ADVScript','Editor').value('role_background',True,type=bool))
+        self.role_background.setChecked(settings().value('role_background',True,type=bool))
         self.role_background.toggled.connect(self.toggle_role_background)
         top.addWidget(self.role_background)
         layout.addLayout(top)
@@ -212,7 +219,7 @@ class Window(QMainWindow):
         self.table = QTableWidget(0,4)
         self.table.setHorizontalHeaderLabels([tr("Ren’Py 即時預覽（唯讀）"),tr('角色名稱 / ID'),tr('台詞內容'),tr('備註')])
         self.table.setItemDelegate(Delegate(self))
-        self.table.setSelectionMode(QAbstractItemView.SelectionMode.ContiguousSelection)
+        self.table.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
         self.table.setEditTriggers(QAbstractItemView.EditTrigger.DoubleClicked | QAbstractItemView.EditTrigger.EditKeyPressed | QAbstractItemView.EditTrigger.AnyKeyPressed)
         self.table.setColumnWidth(0,450)
         self.table.setColumnWidth(1,120)
@@ -222,7 +229,40 @@ class Window(QMainWindow):
         self.table.itemChanged.connect(self.changed_cell)
         self.table.installEventFilter(self)
         self.table.currentCellChanged.connect(self.cell_changed)
+        self.table.verticalHeader().setMinimumSectionSize(32)
+        self.table.verticalHeader().setMaximumSectionSize(2000)
+        self.table.verticalHeader().sectionResized.connect(self.row_resized)
         layout.addWidget(self.table)
+        footer = QHBoxLayout()
+        self.add_row_button = QPushButton(tr('＋ 新增台詞'))
+        self.add_row_button.setProperty('_i18n_text', '＋ 新增台詞')
+        self.add_row_button.clicked.connect(self.add_row_and_edit)
+        footer.addWidget(self.add_row_button)
+        hint = QLabel(tr('也可以按 Enter 到下一行，Tab / Shift+Tab 左右切換欄位。'))
+        hint.setProperty('_i18n_text', '也可以按 Enter 到下一行，Tab / Shift+Tab 左右切換欄位。')
+        hint.setWordWrap(True)
+        footer.addWidget(hint, 1)
+        height_label = QLabel(tr('選取行高'))
+        height_label.setProperty('_i18n_text', '選取行高')
+        footer.addWidget(height_label)
+        self.row_height = QSpinBox()
+        self.row_height.setRange(32, 2000)
+        self.row_height.setValue(100)
+        self.row_height.setSuffix(' px')
+        footer.addWidget(self.row_height)
+        self.apply_height_button = QPushButton(tr('套用至選取行'))
+        self.apply_height_button.setProperty('_i18n_text', '套用至選取行')
+        self.apply_height_button.clicked.connect(self.apply_row_height)
+        footer.addWidget(self.apply_height_button)
+        self.reset_height_button = QPushButton(tr('自動行高'))
+        self.reset_height_button.setProperty('_i18n_text', '自動行高')
+        self.reset_height_button.clicked.connect(self.reset_row_height)
+        footer.addWidget(self.reset_height_button)
+        self.help_button = QPushButton(tr('Help · 操作說明'))
+        self.help_button.setProperty('_i18n_text', 'Help · 操作說明')
+        self.help_button.clicked.connect(self.show_help)
+        footer.addWidget(self.help_button)
+        layout.addLayout(footer)
         search = QHBoxLayout()
         self.find_text = QLineEdit()
         self.find_text.setPlaceholderText(tr('搜尋所有章節的角色、台詞及備註'))
@@ -306,19 +346,23 @@ class Window(QMainWindow):
             if title==tr('點擊後繼續'): self.click_wait_button=button
         self.text_only_checkbox=QCheckBox(tr('只顯示文本'))
         self.text_only_checkbox.toggled.connect(self.toggle_text_only)
+        self.nvl_clear_button=QPushButton(tr('NVL 清頁'))
+        self.nvl_clear_button.clicked.connect(self.add_nvl_clear)
+        font_bar.addWidget(self.nvl_clear_button)
         font_bar.addWidget(self.text_only_checkbox)
         font_bar.addStretch()
         layout.addLayout(font_bar)
         options=QHBoxLayout()
         self.show_ids=QCheckBox(tr('顯示台詞 ID'))
-        self.show_ids.setChecked(QSettings('ADVScript','Editor').value('show_ids',False,type=bool))
+        self.show_ids.setChecked(settings().value('show_ids',False,type=bool))
         self.show_ids.toggled.connect(self.toggle_ids)
         options.addWidget(self.show_ids)
         self.export_ids=QCheckBox(tr('RPY 包含台詞 ID'))
-        self.export_ids.setChecked(QSettings('ADVScript','Editor').value('export_ids',True,type=bool))
-        self.export_ids.toggled.connect(lambda enabled:QSettings('ADVScript','Editor').setValue('export_ids',enabled))
+        self.export_ids.setChecked(settings().value('export_ids',True,type=bool))
+        self.export_ids.toggled.connect(lambda enabled:settings().setValue('export_ids',enabled))
         options.addWidget(self.export_ids)
         options.addStretch()
+        options.addWidget(QLabel('Language /'))
         options.addWidget(QLabel(tr('介面語言')))
         self.language_combo=QComboBox()
         self.language_combo.setProperty('project_content',True)
@@ -330,13 +374,13 @@ class Window(QMainWindow):
 
     def toggle_ids(self,enabled):
         self.commit()
-        QSettings('ADVScript','Editor').setValue('show_ids',enabled)
+        settings().setValue('show_ids',enabled)
         self.refresh()
 
     def change_language(self,index):
         self.commit()
         code=self.language_combo.itemData(index)
-        QSettings('ADVScript','Editor').setValue('language',code)
+        settings().setValue('language',code)
         set_language(code)
         retranslate(self)
         self.statusBar().clearMessage()
@@ -399,6 +443,13 @@ class Window(QMainWindow):
             self.rows.insert(position,dialog.result_row)
             self.refresh();self.table.setCurrentCell(position,2)
 
+    def add_nvl_clear(self):
+        self.commit();self.snapshot()
+        row=max(0,self.table.currentRow()+1)
+        self.rows.insert(row,dict(new_row(),kind='nvl_clear'))
+        self.refresh();self.table.setCurrentCell(row,2)
+        self.table.scrollToItem(self.table.item(row,2))
+
     def edit_stage(self,row,col):
         if self.rows[row].get('kind','dialogue')=='dialogue': return
         self.commit()
@@ -413,7 +464,7 @@ class Window(QMainWindow):
         options=DocumentExportDialog(default_title,self.show_ids.isChecked(),self)
         if not options.exec(): return
         title=options.title_input.text().strip()
-        path,_=QFileDialog.getSaveFileName(self,tr('匯出')+' '+('Word' if kind=='docx' else 'PDF'),'',kind.upper()+' (*.'+kind+')')
+        path,_=QFileDialog.getSaveFileName(self,tr('匯出')+' '+('Word' if kind=='docx' else 'PDF'),self.export_path(kind),kind.upper()+' (*.'+kind+')')
         if not path: return
         if not path.endswith('.'+kind): path+='.'+kind
         try:
@@ -433,7 +484,7 @@ class Window(QMainWindow):
         if self.editor and (self.editor.row,self.editor.col) != (row,col): self.commit()
 
     def toggle_role_background(self,enabled):
-        QSettings('ADVScript','Editor').setValue('role_background',enabled)
+        settings().setValue('role_background',enabled)
         if hasattr(self,'table'):
             for row in range(len(self.rows)): self.apply_role_color(row)
 
@@ -493,6 +544,10 @@ class Window(QMainWindow):
         self.action(menu,tr('章節／段落管理…'),self.manage_sections)
         self.action(menu,tr('新增章節 / 段落…'),self.add_section)
         self.action(menu,tr('設定段落末尾 call…'),self.set_call)
+        menu = self.menuBar().addMenu(tr('Help / 說明'))
+        self.action(menu,tr('Help · 操作說明'),self.show_help)
+        self.about_action = self.action(menu,tr('關於 / About'),self.show_about)
+        self.about_action.setMenuRole(QAction.MenuRole.AboutRole)
 
     def refresh(self):
         self.loading = True
@@ -500,7 +555,7 @@ class Window(QMainWindow):
         self.sections.blockSignals(True)
         self.sections.clear()
         for s in self.data['sections']:
-            self.sections.addItem(s['chapter']+' / '+s['name']+'  [adv_'+s['id']+']')
+            self.sections.addItem(s['chapter']+' / '+s['name']+'  ['+label_name(self.data,s['id'])+']')
         self.sections.setCurrentIndex(self.section_index)
         self.sections.blockSignals(False)
         self.refresh_fonts()
@@ -508,14 +563,14 @@ class Window(QMainWindow):
         for i,row in enumerate(self.rows):
             display=row['text']
             if row.get('kind')=='menu': display += '\n'+'\n'.join('• '+c['text']+(' → '+c['target'] if not self.text_only else '') for c in row['choices'])
-            for col,value in enumerate([statement(row,include_ids=self.show_ids.isChecked()),row['character'],display,row['note']]):
+            for col,value in enumerate([statement(row,include_ids=self.show_ids.isChecked(),label_prefix=self.data.get('label_prefix','adv_')),row['character'],display,row['note']]):
                 item = QTableWidgetItem(value)
                 if col == 0 or (row.get('kind','dialogue')!='dialogue' and col in (1,2)):
                     item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsEditable)
                 if self.show_ids.isChecked(): item.setToolTip(tr('永久台詞 ID：')+row['id'])
                 self.table.setItem(i,col,item)
             self.apply_role_color(i)
-            self.table.setRowHeight(i,max(80,25*(len(row.get('choices',[]))+1),18*len(statement(row,include_ids=self.show_ids.isChecked()).splitlines())+12 if not self.text_only else 0))
+            self.table.setRowHeight(i,self.row_heights.get(row['id'],self.automatic_row_height(row)))
             self.table.setRowHidden(i,self.text_only and row.get('kind','dialogue') not in ('dialogue','menu'))
         self.loading = False
         retranslate(self)
@@ -563,7 +618,7 @@ class Window(QMainWindow):
             return
         self.snapshot()
         self.rows[item.row()][key] = item.text()
-        self.table.item(item.row(),0).setText(statement(self.rows[item.row()],include_ids=self.show_ids.isChecked()))
+        self.table.item(item.row(),0).setText(statement(self.rows[item.row()],include_ids=self.show_ids.isChecked(),label_prefix=self.data.get('label_prefix','adv_')))
         if item.column() == 1: self.apply_role_color(item.row())
         self.setWindowTitle(self.windowTitle().rstrip(' *')+' *')
 
@@ -608,6 +663,85 @@ class Window(QMainWindow):
                 self.table.editItem(self.table.item(row,col))
                 return True
         return super().eventFilter(obj,event)
+
+    def project_directory(self):
+        return str(self.db.path.parent) if self.db else default_directory()
+
+    def export_path(self, extension):
+        name = self.db.path.stem if self.db else tr('台詞稿')
+        return str(Path(self.project_directory()) / (name + '.' + extension))
+
+    def selected_rows(self):
+        rows = sorted({i.row() for i in self.table.selectedIndexes() if not self.table.isRowHidden(i.row())})
+        if not rows and self.table.currentRow() >= 0:
+            rows = [self.table.currentRow()]
+        return rows
+
+    def automatic_row_height(self, row):
+        return min(2000,max(80,25*(len(row.get('choices',[]))+1),18*len(statement(row,include_ids=self.show_ids.isChecked(),label_prefix=self.data.get('label_prefix','adv_')).splitlines())+12 if not self.text_only else 0))
+
+    def persist_heights(self):
+        if self.db:
+            save_heights(self.db.path,self.row_heights)
+
+    def row_resized(self, row, old_height, height):
+        if self.loading or self._resizing_rows or not 0 <= row < len(self.rows): return
+        selected = self.selected_rows()
+        self.set_row_heights(selected if row in selected else [row], height)
+
+    def set_row_heights(self, rows, height):
+        self._resizing_rows = True
+        try:
+            for row in rows:
+                if 0 <= row < len(self.rows):
+                    self.row_heights[self.rows[row]['id']] = height
+                    self.table.setRowHeight(row,height)
+        finally:
+            self._resizing_rows = False
+        self.persist_heights()
+
+    def apply_row_height(self):
+        self.commit()
+        self.set_row_heights(self.selected_rows(), self.row_height.value())
+
+    def reset_row_height(self):
+        self.commit()
+        self._resizing_rows = True
+        try:
+            for row in self.selected_rows():
+                self.row_heights.pop(self.rows[row]['id'],None)
+                self.table.setRowHeight(row,self.automatic_row_height(self.rows[row]))
+        finally:
+            self._resizing_rows = False
+        self.persist_heights()
+
+    def add_row_and_edit(self):
+        self.add_row()
+        row = len(self.rows)-1
+        self.table.setCurrentCell(row,1)
+        self.table.scrollToItem(self.table.item(row,1))
+        self.table.setFocus()
+        self.table.editItem(self.table.item(row,1))
+
+    def show_about(self):
+        self.commit()
+        AboutDialog(self).exec()
+
+    def show_help(self):
+        self.commit()
+        dialog = QDialog(self)
+        dialog.setWindowTitle(tr('Help · 操作說明')+' — '+__version__)
+        dialog.resize(720,620)
+        layout = QVBoxLayout(dialog)
+        layout.addWidget(QLabel(tr(APP_NAME)+' — '+__version__))
+        browser = QTextBrowser()
+        browser.setOpenExternalLinks(True)
+        browser.setHtml(help_html())
+        layout.addWidget(browser)
+        close = QDialogButtonBox(QDialogButtonBox.StandardButton.Close)
+        close.rejected.connect(dialog.reject)
+        layout.addWidget(close)
+        dialog.exec()
 
     def add_row(self):
         self.commit()
@@ -737,7 +871,7 @@ class Window(QMainWindow):
         if dialog.exec():
             chars,colors = dialog.values()
             self.snapshot()
-            update_characters(self.data,chars,colors,dialog.renames())
+            update_characters(self.data,chars,colors,dialog.renames(),dialog.modes(),dialog.narrator_mode.currentData())
             self.refresh()
 
     def manage_sections(self):
@@ -778,7 +912,7 @@ class Window(QMainWindow):
         self.commit()
         path = None
         if save_as or self.db is None:
-            path,_ = QFileDialog.getSaveFileName(self,tr('儲存專案'),'',tr('ADV 專案 (*.advdb)'))
+            path,_ = QFileDialog.getSaveFileName(self,tr('儲存專案'),str(self.db.path) if self.db else default_directory(),tr('ADV 專案 (*.advdb)'))
             if not path: return False
             if not path.endswith('.advdb'): path += '.advdb'
         try:
@@ -796,6 +930,8 @@ class Window(QMainWindow):
                 self.db.backup()
             else:
                 self.db.save(self.data)
+            remember_project(self.db.path)
+            save_heights(self.db.path,self.row_heights)
             self.dirty = False
             self.refresh_fonts()
             self.setWindowTitle(tr(APP_NAME)+' — '+self.db.path.name)
@@ -838,31 +974,22 @@ class Window(QMainWindow):
 
     def new_project(self):
         if not self.confirm_leave(): return
-        path,_=QFileDialog.getSaveFileName(self,tr('建立新專案：選擇工程文件保存位置'),tr('未命名專案.advdb'),tr('ADV 專案 (*.advdb)'))
-        if not path: return
-        if not path.endswith('.advdb'): path+='.advdb'
-        candidate=None
+        folder = QFileDialog.getExistingDirectory(self,tr('選擇新專案資料夾（可建立新資料夾）'),self.project_directory())
+        if not folder: return
         try:
-            data=dict(characters={},character_colors={},fonts={},images={},sections=[dict(id='opening',chapter='第一章',name='開場',call='',rows=[new_row()])])
-            candidate=Database(path);candidate.save(data)
-            asset_folder(path).mkdir(parents=True,exist_ok=True)
-            if self.db: self.db.close()
-            self.db,self.data=candidate,data
-            self.document_title=None
-            self.dirty=False;self.undo_stack.clear();self.redo_stack.clear();self.section_index=0
-            self.refresh()
+            self.open_path(create_project(folder))
         except Exception as error:
-            if candidate: candidate.close()
             self.error(error)
 
     def open_dialog(self):
         if not self.confirm_leave(): return
-        path,_ = QFileDialog.getOpenFileName(self,tr('開啟專案'),'',tr('ADV 專案 (*.advdb)'))
+        path,_ = QFileDialog.getOpenFileName(self,tr('開啟專案'),self.project_directory(),tr('ADV 專案 (*.advdb)'))
         if path: self.open_path(path)
 
     def open_path(self,path):
         candidate = None
         try:
+            if not Path(path).is_file(): raise FileNotFoundError(str(path))
             candidate = Database(path)
             data = candidate.load()
             if not data['sections']: raise ValueError(tr('專案沒有段落'))
@@ -870,6 +997,8 @@ class Window(QMainWindow):
             validate(data)
             if self.db: self.db.close()
             self.db,self.data = candidate,data
+            self.row_heights = load_heights(self.db.path)
+            remember_project(self.db.path)
             self.document_title=None
             self.section_index = 0
             self.dirty = False
@@ -882,16 +1011,18 @@ class Window(QMainWindow):
 
     def export(self):
         self.commit()
-        folder = QFileDialog.getExistingDirectory(self,tr('選擇 Ren’Py game 資料夾（僅更新 adv_generated）'))
-        if folder:
-            try:
-                result = export_rpy(self.data,folder,self.db.path if self.db else None,include_ids=self.export_ids.isChecked())
-                self.statusBar().showMessage(tr('已匯出至 ')+str(result))
-            except Exception as error: self.error(error)
+        name = (self.db.path.stem if self.db else 'dialogue') + '_renpy'
+        options = RenPyExportDialog(self.project_directory(),name,self)
+        if not options.exec(): return
+        try:
+            result = export_rpy(self.data,options.directory.text(),self.db.path if self.db else None,
+                include_ids=self.export_ids.isChecked(),subfolder=options.subfolder)
+            self.statusBar().showMessage(tr('已匯出至 ')+str(result))
+        except Exception as error: self.error(error)
 
     def excel_out(self):
         self.commit()
-        path,_ = QFileDialog.getSaveFileName(self,tr('匯出 Excel'),'','Excel (*.xlsx)')
+        path,_ = QFileDialog.getSaveFileName(self,tr('匯出 Excel'),self.export_path('xlsx'),'Excel (*.xlsx)')
         if path:
             try: export_excel(self.data,path if path.endswith('.xlsx') else path+'.xlsx',self.db.path if self.db else None)
             except Exception as error: self.error(error)

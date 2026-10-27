@@ -2,7 +2,7 @@ $ErrorActionPreference = 'Stop'
 Set-Location (Split-Path $PSScriptRoot -Parent)
 $Python = Join-Path (Get-Location) '.venv/Scripts/python.exe'
 if (-not (Test-Path $Python)) { throw 'Create .venv with Python 3.12 and install requirements first.' }
-& $Python -m PyInstaller --noconfirm --clean --windowed --onedir --name 'RenPy Text Editor' --collect-data adv_editor --collect-all docx --collect-all reportlab --distpath dist --workpath build main.py
+& $Python -m PyInstaller --noconfirm --clean --windowed --onedir --name 'RenPy Text Editor' --collect-data adv_editor --add-data "examples/localized;examples" --collect-all docx --collect-all reportlab --distpath dist --workpath build main.py
 if ($LASTEXITCODE -ne 0) { throw 'PyInstaller failed.' }
 & $Python scripts/prepare_distribution.py 'dist/RenPy Text Editor'
 if ($LASTEXITCODE -ne 0) { throw 'Release content preparation failed.' }

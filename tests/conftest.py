@@ -2,6 +2,7 @@ import os
 os.environ.setdefault('QT_QPA_PLATFORM','offscreen')
 import gc
 import tempfile
+os.environ["RENPY_EDITOR_SETTINGS_FILE"] = os.path.join(tempfile.mkdtemp(prefix="renpy-editor-preferences-"), "settings.ini")
 import pytest
 from PySide6.QtCore import QCoreApplication,QEvent,QSettings
 from PySide6.QtGui import QFontDatabase
@@ -26,7 +27,9 @@ def dispose_qt_objects():
 @pytest.fixture(autouse=True)
 def default_interface_settings():
     from adv_editor.i18n import set_language
-    settings=QSettings('ADVScript','Editor')
+    from adv_editor.preferences import settings as editor_settings
+    settings=editor_settings()
+    settings.clear()
     for key,value in {'language':'zh_TW','show_ids':False,'export_ids':True,'role_background':True}.items(): settings.setValue(key,value)
     set_language('zh_TW')
     yield

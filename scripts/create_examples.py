@@ -45,7 +45,18 @@ def create_examples(destination):
         db=Database(project);db.save(branch);db.close()
         export_excel(branch,folder/'branches.xlsx',project)
         export_rpy(branch,folder/'renpy_game',project)
-    (destination/'README.md').write_text('# Example projects\n\nChoose `zh_TW`, `zh_CN`, `ja` or `en`, then open `sample.advdb` or `branches.advdb`.\n\nKeep each project beside its matching `_assets` folder. Use Save as before editing a bundled demo.\nThe same permanent dialogue IDs are intentionally used in each language version.\nBackground images are original solid-color placeholders. No operating-system fonts are included.\n',encoding='utf-8')
+        nvl=localized_project(code)
+        nvl['character_modes']={cid:'nvl' for cid in nvl['characters']}
+        nvl['narrator_mode']='nvl'
+        nvl['sections'][0]['call']=''
+        nvl['sections'][0]['rows'].extend([
+            dict(id='d_nvl_clear_001',character='',text='',note='',kind='nvl_clear'),
+            dict(id='d_nvl_menu_001',character='',text=t['prompt'],note='',kind='menu',nvl_menu=True,nvl_clear_after=True,choices=[dict(text=t['choices'][0],target='greeting'),dict(text=t['choices'][1],target='opening')])])
+        nvl['sections'][1]['rows'].append(dict(id='d_nvl_clear_002',character='',text='',note='',kind='nvl_clear'))
+        db=Database(folder/'nvl.advdb');db.save(nvl);db.close()
+        export_excel(nvl,folder/'nvl.xlsx')
+        export_rpy(nvl,folder/'nvl_game')
+    (destination/'README.md').write_text('# Example projects\n\nChoose `zh_TW`, `zh_CN`, `ja` or `en`, then open `sample.advdb`, `branches.advdb` or `nvl.advdb`.\n\nKeep each project beside its matching `_assets` folder. Use Save as before editing a bundled demo.\nThe same permanent dialogue IDs are intentionally used in each language version.\nBackground images are original solid-color placeholders. No operating-system fonts are included.\n',encoding='utf-8')
 
 
 if __name__=='__main__': create_examples(sys.argv[1] if len(sys.argv)>1 else 'examples/localized')

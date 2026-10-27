@@ -3,6 +3,11 @@
 [![macOS · Apple Silicon](https://img.shields.io/badge/macOS-Apple%20Silicon-555555?style=flat-square&logo=apple&logoColor=white)](https://github.com/akihium/renpy-text-editor/releases/latest/download/RenPy-Text-Editor-macOS-arm64.zip)
 [![Windows · x64](https://img.shields.io/badge/Windows-x64-0078D4?style=flat-square)](https://github.com/akihium/renpy-text-editor/releases/latest/download/RenPy-Text-Editor-Windows-x64.zip)
 
+[![Stars](https://img.shields.io/github/stars/akihium/renpy-text-editor?style=flat-square&logo=github)](https://github.com/akihium/renpy-text-editor/stargazers)
+[![Forks](https://img.shields.io/github/forks/akihium/renpy-text-editor?style=flat-square&logo=github)](https://github.com/akihium/renpy-text-editor/forks)
+[![Issues](https://img.shields.io/github/issues/akihium/renpy-text-editor?style=flat-square&logo=github)](https://github.com/akihium/renpy-text-editor/issues)
+[![License](https://img.shields.io/github/license/akihium/renpy-text-editor?style=flat-square)](LICENSE)
+
 **A desktop GUI editor for Ren’Py: write dialogue in a table, preview text formatting, and export scripts for your game.**
 
 Ren’Py Text Editor is an offline desktop application for writers who want to focus on characters, dialogue and notes. It uses Python, PySide6 and SQLite, with portable builds for **Windows x64** and **macOS Apple Silicon**.
@@ -11,10 +16,14 @@ Ren’Py Text Editor is an offline desktop application for writers who want to f
 
 [Download releases](https://github.com/akihium/renpy-text-editor/releases) · [繁體中文指南](docs/quickstart.zh-TW.md) · [简体中文指南](docs/quickstart.zh-CN.md) · [日本語ガイド](docs/quickstart.ja.md) · [English guide](docs/quickstart.en.md)
 
-![English editor](screenshots/public-en.png)
+![English editor with an NVL example](screenshots/public-en.png)
+
+![Project launcher](screenshots/public-startup-en.png)
 
 ## Features
 
+- Project launcher with language selection, recent projects and editable sample copies.
+- ADV and NVL characters/narration, NVL page clearing and NVL choices; modes can be mixed.
 - Four-column editor: read-only Ren’Py preview, character, dialogue and notes.
 - Keyboard navigation: Tab / Shift+Tab, Enter for the next dialogue, Shift+Enter for a line break, formatting and undo shortcuts.
 - Visual and source-tag modes, with bold, italic, underline, font size, color and imported fonts.
@@ -25,7 +34,8 @@ Ren’Py Text Editor is an offline desktop application for writers who want to f
 - Text-only view to hide stage cues while editing dialogue.
 - SQLite projects, autosave, asset-aware backups and search/replace.
 - Ren’Py `.rpy`, Excel, Word and PDF output; custom document titles and optional exported dialogue IDs.
-- Four localized demo sets, included in both application packages.
+- Four localized demo sets (dialogue, branching/staging and NVL), included in both platform packages.
+- Batch row heights, a visible add-dialogue button, localized Help, version information and About.
 
 ## Download and run
 
@@ -38,7 +48,9 @@ Get the latest package from [Releases](https://github.com/akihium/renpy-text-edi
 
 The executable depends on the other files in the package. **Keep the whole extracted folder.** These are portable builds; no paid developer signing certificate or macOS notarization is applied.
 
-Open an example under `examples/en`, `examples/ja`, `examples/zh_CN` or `examples/zh_TW`. Each language includes `sample.advdb`, `branches.advdb`, matching Excel examples, assets and an exported Ren’Py example. Use Save as before modifying a bundled demo.
+Start the app, choose a language beside **Language**, and use a **Sample** button. This creates a fresh editable local copy; your edits appear in recent projects. You can also open a packaged example under `examples/en`, `examples/ja`, `examples/zh_CN` or `examples/zh_TW`. Each language includes `sample.advdb`, `branches.advdb`, `nvl.advdb`, matching Excel files, assets and exported Ren’Py scripts. Use Save as before directly editing files from the package.
+
+[What changed in v0.2.0](CHANGELOG.md) · [Report a problem / give feedback](https://github.com/akihium/renpy-text-editor/issues)
 
 When moving your own project, keep `name.advdb` together with `name_assets/`. The app copies imported fonts and images there, and includes them when saving elsewhere or exporting to Ren’Py. No cloud service or account is needed to run the app.
 
@@ -66,7 +78,9 @@ If Qt cannot find its plugins on macOS, use `zsh scripts/run_macos.sh` to clear 
 
 ## Ren’Py integration
 
-Export to your game's `game` folder. Generated files live under `adv_generated/`, leaving handwritten stage scripts separate.
+Click **Export .rpy** in the main window. Choose your game's `game` folder or a folder inside it. You can name a subfolder or export directly into the selected folder. Fonts and images follow the export layout; existing handwritten `.rpy` files are preserved. Other export dialogs also start in your project folder and let you change the path.
+
+In chapter/section management, the label prefix defaults to `adv_`. Change it or leave it blank; the preview and exported internal calls, jumps and choices update together. With the default prefix, a handwritten entry point can use:
 
 ```renpy
 label start:
@@ -75,6 +89,8 @@ label start:
 ```
 
 The **Include IDs in RPY** switch controls explicit `id d_...` clauses. Permanent editor IDs stay in the project either way. Changing section or character IDs updates project references; handwritten external scripts must be updated separately.
+
+For NVL, set character/narrator modes in **Character management**, insert **Clear NVL page** between pages and enable NVL presentation in choice settings. Try the launcher's NVL sample.
 
 This app is not a Ren’Py engine or SDK. Run Ren’Py Lint and play-test your game after exporting, especially when using custom tags or handwritten image definitions. Ren’Py is a separate project and does not endorse this editor.
 

@@ -1,12 +1,12 @@
 from .i18n import tr
 import copy
 from PySide6.QtWidgets import (QDialog,QVBoxLayout,QHBoxLayout,QFormLayout,QLabel,QComboBox,
-    QLineEdit,QPushButton,QTableWidget,QTableWidgetItem,QDialogButtonBox,QFileDialog)
+    QLineEdit,QPushButton,QTableWidget,QTableWidgetItem,QDialogButtonBox,QFileDialog,QCheckBox)
 from .core import new_row,validate_action
 from .assets import import_image
 
 KINDS={'scene':'背景切換','show':'顯示圖片／角色','hide':'隱藏圖片／角色','transition':'轉場效果',
-       'menu':'選項與分支','jump':'跳轉分支','call':'呼叫段落','return':'返回'}
+       'menu':'選項與分支','jump':'跳轉分支','call':'呼叫段落','return':'返回','nvl_clear':'NVL 清頁'}
 
 
 class StageDialog(QDialog):
@@ -42,6 +42,13 @@ class StageDialog(QDialog):
         self.import_button=QPushButton(tr('匯入背景／圖片…'))
         self.import_button.clicked.connect(self.import_background)
         layout.addWidget(self.import_button)
+        self.nvl_menu=QCheckBox(tr('以 NVL 模式顯示選項'))
+        self.nvl_menu.setChecked(row.get('nvl_menu',False) if row else False)
+        self.nvl_menu.toggled.connect(lambda _: self.update_controls())
+        layout.addWidget(self.nvl_menu)
+        self.nvl_clear_after=QCheckBox(tr('選擇後清除 NVL 頁面'))
+        self.nvl_clear_after.setChecked(row.get('nvl_clear_after',True) if row else True)
+        layout.addWidget(self.nvl_clear_after)
         self.table=QTableWidget(0,2)
         self.table.setHorizontalHeaderLabels([tr('選項文字'),tr('選擇後跳轉的段落')])
         self.table.setColumnWidth(0,280)
@@ -75,6 +82,8 @@ class StageDialog(QDialog):
         self.effects.setEnabled(kind=='transition')
         self.target.setEnabled(kind in ('jump','call'))
         self.import_button.setEnabled(kind in ('scene','show'))
+        self.nvl_menu.setVisible(kind=='menu')
+        self.nvl_clear_after.setVisible(kind=='menu' and self.nvl_menu.isChecked())
         for widget in (self.table,self.add_button,self.delete_button): widget.setVisible(kind=='menu')
 
     def add_choice(self,text='',target=''):
@@ -100,9 +109,11 @@ class StageDialog(QDialog):
         row['kind']=kind;row['character']=''
         row['text']=self.value.text().strip()
         if kind in ('jump','call'): row['text']=self.target.currentData()
-        if kind=='return': row['text']=''
+        if kind in ('return','nvl_clear'): row['text']=''
         if kind=='transition': row['text']=self.effects.currentText()
         if kind in ('scene','show') and self.transition.currentData(): row['transition']=self.transition.currentData()
+        if kind=='menu' and self.nvl_menu.isChecked():
+            row['nvl_menu']=True;row['nvl_clear_after']=self.nvl_clear_after.isChecked()
         if kind=='menu': row['choices']=[dict(text=self.table.item(i,0).text(),target=self.table.cellWidget(i,1).currentData()) for i in range(self.table.rowCount())]
         try: validate_action(row,{s['id'] for s in self.data['sections']})
         except ValueError as error: self.error.setText(str(error));return

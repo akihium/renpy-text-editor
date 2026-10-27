@@ -4,7 +4,7 @@ from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QFormLayout, QLabel,
     QLineEdit, QComboBox, QDialogButtonBox, QPushButton, QTableWidget, QTableWidgetItem,
     QAbstractItemView, QMessageBox, QInputDialog)
-from .core import validate
+from .core import validate, label_name
 from .section_ops import (available_id, update_section, duplicate_sections,
                           delete_sections, merge_sections)
 
@@ -26,7 +26,7 @@ class SectionForm(QDialog):
         self.sid = QLineEdit(available_id(data))
         self.sid.setPlaceholderText(tr('例如 chapter01_opening；只能使用英數字與底線'))
         self.label_preview = QLabel()
-        self.sid.textChanged.connect(lambda value:self.label_preview.setText('Ren’Py label：adv_'+value))
+        self.sid.textChanged.connect(lambda value:self.label_preview.setText('Ren’Py label：'+label_name(self.data,value)))
         self.target = QComboBox()
         self.target.addItem(tr('無，直接 return'),'')
         for s in data['sections']:
@@ -37,10 +37,10 @@ class SectionForm(QDialog):
             self.name.setText(section['name'])
             self.sid.setText(section['id'])
             self.target.setCurrentIndex(max(0,self.target.findData(section['call'])))
-        self.label_preview.setText('Ren’Py label：adv_'+self.sid.text())
+        self.label_preview.setText('Ren’Py label：'+label_name(self.data,self.sid.text()))
         form.addRow(tr('章節（可直接輸入新名稱）'),self.chapter)
         form.addRow(tr('段落顯示名稱'),self.name)
-        form.addRow(tr('英文段落 ID（不含 adv_）'),self.sid)
+        form.addRow(tr('英文段落 ID（不含前綴）'),self.sid)
         form.addRow('',self.label_preview)
         form.addRow(tr('段落結尾 call'),self.target)
         layout.addLayout(form)
@@ -79,6 +79,15 @@ class SectionDialog(QDialog):
         description = QLabel(tr('章節按名稱分組。可多選段落複製、刪除、合併或移至其他章節；按「套用」才會修改專案，套用後可復原。'))
         description.setWordWrap(True)
         layout.addWidget(description)
+        prefix_form = QFormLayout()
+        self.label_prefix = QLineEdit(self.data.get('label_prefix','adv_'))
+        self.label_prefix.setPlaceholderText(tr('留空表示不加前綴'))
+        self.label_prefix.textChanged.connect(self.update_prefix)
+        prefix_form.addRow(tr('Ren’Py label 前綴（整個專案）'),self.label_prefix)
+        layout.addLayout(prefix_form)
+        prefix_note = QLabel(tr('預設 adv_；可改成 story_ 或留空。專案內的 call、jump、選項跳轉會同步更新；手寫 .rpy 的引用需自行調整。'))
+        prefix_note.setWordWrap(True)
+        layout.addWidget(prefix_note)
         self.table = QTableWidget(0,5)
         self.table.setHorizontalHeaderLabels([tr('章節'),tr('段落名稱'),tr('英文段落 ID'),tr('台詞數'),tr('結尾 call')])
         self.table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
@@ -109,6 +118,9 @@ class SectionDialog(QDialog):
         buttons.rejected.connect(self.reject)
         layout.addWidget(buttons)
         self.refresh([current_id])
+
+    def update_prefix(self, value):
+        self.data['label_prefix'] = value
 
     def selected_ids(self):
         return [self.data['sections'][row]['id'] for row in sorted({i.row() for i in self.table.selectedIndexes()})]

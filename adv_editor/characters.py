@@ -1,9 +1,10 @@
 from .i18n import tr
 import re
+import copy
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QTableWidget, QTableWidgetItem,
-    QPushButton, QLineEdit, QWidget, QColorDialog, QDialogButtonBox, QLabel, QMessageBox)
+    QPushButton, QLineEdit, QWidget, QColorDialog, QDialogButtonBox, QLabel, QMessageBox, QComboBox)
 from .core import identifier
 
 
@@ -30,21 +31,39 @@ class ColorField(QWidget):
         if color.isValid(): self.input.setText(color.name())
 
 
+def mode_combo(mode='adv'):
+    combo=QComboBox()
+    combo.addItem(tr('ADV（逐句對話）'),'adv')
+    combo.addItem(tr('NVL（整頁文字）'),'nvl')
+    combo.setCurrentIndex(max(0,combo.findData(mode)))
+    return combo
+
+
 class CharacterDialog(QDialog):
     def __init__(self,data,parent=None):
         super().__init__(parent)
+        self.source_data=copy.deepcopy(data)
         self.setWindowTitle(tr('角色管理'))
-        self.resize(760,440)
+        self.resize(980,480)
         self.used = {r['character'] for s in data['sections'] for r in s['rows'] if r['character']}
         layout = QVBoxLayout(self)
         layout.addWidget(QLabel(tr('可修改代號、顯示名稱與顏色。儲存時檢查重名，並同步更新所有台詞的角色引用。')))
-        self.table = QTableWidget(0,3)
-        self.table.setHorizontalHeaderLabels([tr('代號（可改名）'),tr('實際顯示名字'),tr('角色顏色')])
+        self.table = QTableWidget(0,4)
+        self.table.setHorizontalHeaderLabels([tr('代號（可改名）'),tr('實際顯示名字'),tr('角色顏色'),tr('文字模式')])
         self.table.setColumnWidth(0,150)
         self.table.setColumnWidth(1,180)
+        self.table.setColumnWidth(2,280)
         self.table.horizontalHeader().setStretchLastSection(True)
         layout.addWidget(self.table)
-        for cid,name in data['characters'].items(): self.add_row(cid,name,data.get('character_colors',{}).get(cid,''))
+        for cid,name in data['characters'].items(): self.add_row(cid,name,data.get('character_colors',{}).get(cid,''),data.get('character_modes',{}).get(cid,'adv'))
+        narration=QHBoxLayout()
+        narration.addWidget(QLabel(tr('旁白文字模式')))
+        self.narrator_mode=mode_combo(data.get('narrator_mode','adv'))
+        narration.addWidget(self.narrator_mode)
+        narration.addStretch()
+        layout.addLayout(narration)
+        note=QLabel(tr('NVL 會在同一頁累積多段文字，請在適當位置插入「NVL 清頁」。'))
+        note.setWordWrap(True);layout.addWidget(note)
         controls = QHBoxLayout()
         for title,fn in [(tr('新增角色'),lambda:self.add_row()),(tr('刪除選取角色'),self.delete_row)]:
             button = QPushButton(title)
@@ -59,7 +78,7 @@ class CharacterDialog(QDialog):
         controls.addWidget(buttons)
         layout.addLayout(controls)
 
-    def add_row(self,cid='',name='',color=''):
+    def add_row(self,cid='',name='',color='',mode='adv'):
         row = self.table.rowCount()
         self.table.insertRow(row)
         item = QTableWidgetItem(cid)
@@ -67,6 +86,7 @@ class CharacterDialog(QDialog):
         self.table.setItem(row,0,item)
         self.table.setItem(row,1,QTableWidgetItem(name))
         self.table.setCellWidget(row,2,ColorField(color))
+        self.table.setCellWidget(row,3,mode_combo(mode))
         self.table.setRowHeight(row,42)
         self.table.setCurrentCell(row,0)
 
@@ -81,6 +101,9 @@ class CharacterDialog(QDialog):
     def renames(self):
         return {self.table.item(row,0).data(Qt.ItemDataRole.UserRole):self.table.item(row,0).text().strip()
                 for row in range(self.table.rowCount()) if self.table.item(row,0).data(Qt.ItemDataRole.UserRole)}
+
+    def modes(self):
+        return {self.table.item(row,0).text().strip():'nvl' for row in range(self.table.rowCount()) if self.table.cellWidget(row,3).currentData()=='nvl'}
 
     def values(self):
         chars,colors = {},{}
@@ -98,7 +121,10 @@ class CharacterDialog(QDialog):
         return chars,colors
 
     def accept(self):
-        try: self.values()
+        try:
+            chars,colors=self.values()
+            from .character_ops import update_characters
+            update_characters(copy.deepcopy(self.source_data),chars,colors,self.renames(),self.modes(),self.narrator_mode.currentData())
         except ValueError as error:
             QMessageBox.warning(self,tr('請修正角色資料'),str(error))
             return

@@ -5,7 +5,7 @@ on:
       version:
         description: Release version (without v)
         required: true
-        default: '0.1.1'
+        default: '0.2.0'
 permissions:
   contents: read
 concurrency:
@@ -28,7 +28,7 @@ jobs:
         with:
           python-version: '3.12'
       - name: Validate version
-        run: python -c "import os,re; assert re.fullmatch(r'[0-9]+\.[0-9]+\.[0-9]+', os.environ['RELEASE_VERSION'])"
+        run: python -c "import os,re; from adv_editor import __version__; assert re.fullmatch(r'[0-9]+\.[0-9]+\.[0-9]+', os.environ['RELEASE_VERSION']); assert __version__ == os.environ['RELEASE_VERSION']"
       - run: python -m venv .venv
       - if: runner.os == 'Windows'
         run: .venv/Scripts/python.exe -m pip install -r requirements.txt

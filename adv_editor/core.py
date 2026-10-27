@@ -48,14 +48,17 @@ class Database:
         CREATE TABLE IF NOT EXISTS characters(id TEXT PRIMARY KEY, name TEXT NOT NULL);
         CREATE TABLE IF NOT EXISTS images(filename TEXT PRIMARY KEY, tag TEXT NOT NULL);
         CREATE TABLE IF NOT EXISTS fonts(filename TEXT PRIMARY KEY, family TEXT NOT NULL);
+        CREATE TABLE IF NOT EXISTS project_settings(key TEXT PRIMARY KEY, value TEXT NOT NULL);
         CREATE TABLE IF NOT EXISTS sections(id TEXT PRIMARY KEY, chapter TEXT, name TEXT, target TEXT, position INTEGER);
         CREATE TABLE IF NOT EXISTS dialogue(id TEXT PRIMARY KEY, section_id TEXT REFERENCES sections(id), character TEXT, text TEXT, note TEXT, position INTEGER);
         PRAGMA user_version=1;''')
         if 'color' not in {row[1] for row in self.conn.execute('PRAGMA table_info(characters)')}:
             self.conn.execute("ALTER TABLE characters ADD COLUMN color TEXT NOT NULL DEFAULT ''")
+        if 'mode' not in {row[1] for row in self.conn.execute('PRAGMA table_info(characters)')}:
+            self.conn.execute("ALTER TABLE characters ADD COLUMN mode TEXT NOT NULL DEFAULT 'adv'")
         if 'extra' not in {row[1] for row in self.conn.execute('PRAGMA table_info(dialogue)')}:
             self.conn.execute("ALTER TABLE dialogue ADD COLUMN extra TEXT NOT NULL DEFAULT '{}'")
-        self.conn.execute('PRAGMA user_version=4')
+        self.conn.execute('PRAGMA user_version=6')
         self.conn.commit()
 
     def load(self):
@@ -68,11 +71,22 @@ class Database:
                 row.update(json.loads(record[4]))
                 rows.append(row)
             sections.append(dict(id=sid, chapter=chapter, name=name, call=target, rows=rows))
-        return dict(characters=chars, images=dict(self.conn.execute('SELECT filename,tag FROM images')), fonts=dict(self.conn.execute('SELECT filename,family FROM fonts')), character_colors={cid:color for cid,color in self.conn.execute('SELECT id,color FROM characters') if color}, sections=sections)
+        data = dict(characters=chars, images=dict(self.conn.execute('SELECT filename,tag FROM images')), fonts=dict(self.conn.execute('SELECT filename,family FROM fonts')), character_colors={cid:color for cid,color in self.conn.execute('SELECT id,color FROM characters') if color}, sections=sections)
+        prefix = self.conn.execute("SELECT value FROM project_settings WHERE key='label_prefix'").fetchone()
+        if prefix is not None: data['label_prefix'] = prefix[0]
+        modes = dict(self.conn.execute("SELECT id,mode FROM characters WHERE mode!='adv'"))
+        if modes: data['character_modes'] = modes
+        narrator = self.conn.execute("SELECT value FROM project_settings WHERE key='narrator_mode'").fetchone()
+        if narrator is not None: data['narrator_mode'] = narrator[0]
+        return data
 
     def save(self, data):
         validate(data)
         with self.conn:
+            for key in ('label_prefix','narrator_mode'):
+                self.conn.execute('DELETE FROM project_settings WHERE key=?',(key,))
+                if key in data:
+                    self.conn.execute('INSERT INTO project_settings VALUES (?,?)',(key,data[key]))
             self.conn.execute('DELETE FROM dialogue')
             self.conn.execute('DELETE FROM sections')
             self.conn.execute('DELETE FROM characters')
@@ -80,7 +94,7 @@ class Database:
             self.conn.executemany('INSERT INTO images VALUES (?,?)',data.get('images',{}).items())
             self.conn.execute('DELETE FROM fonts')
             self.conn.executemany('INSERT INTO fonts VALUES (?,?)',data.get('fonts',{}).items())
-            self.conn.executemany('INSERT INTO characters(id,name,color) VALUES (?,?,?)', [(cid,name,data.get('character_colors',{}).get(cid,'')) for cid,name in data['characters'].items()])
+            self.conn.executemany('INSERT INTO characters(id,name,color,mode) VALUES (?,?,?,?)', [(cid,name,data.get('character_colors',{}).get(cid,''),data.get('character_modes',{}).get(cid,'adv')) for cid,name in data['characters'].items()])
             for i, s in enumerate(data['sections']):
                 self.conn.execute('INSERT INTO sections VALUES (?,?,?,?,?)', (s['id'],s['chapter'],s['name'],s['call'],i))
                 self.conn.executemany('INSERT INTO dialogue VALUES (?,?,?,?,?,?,?)', [(r['id'],s['id'],r['character'],r['text'],r['note'],j,json.dumps({k:v for k,v in r.items() if k not in ('id','character','text','note')},ensure_ascii=False)) for j,r in enumerate(s['rows'])])
@@ -104,7 +118,21 @@ class Database:
         self.conn.close()
 
 
+def label_name(data, section_id):
+    return data.get('label_prefix','adv_') + section_id
+
+
 def validate(data):
+    prefix = data.get('label_prefix','adv_')
+    if not isinstance(prefix,str) or (prefix and not re.fullmatch(r'[A-Za-z_][A-Za-z0-9_]*',prefix)):
+        raise ValueError(tr('Label 前綴只能使用英文字母、數字與底線，且不可用數字開頭；可留空。'))
+    modes=data.get('character_modes',{})
+    if not isinstance(modes,dict) or any(cid not in data['characters'] or mode!='nvl' for cid,mode in modes.items()):
+        raise ValueError(tr('角色文字模式設定無效。'))
+    if data.get('narrator_mode','adv') not in ('adv','nvl'):
+        raise ValueError(tr('旁白文字模式設定無效。'))
+    if (modes or data.get('narrator_mode')=='nvl') and {'nvl','nvl_narrator'} & set(data['characters']):
+        raise ValueError(tr('NVL 模式下，nvl 與 nvl_narrator 是保留角色代號。'))
     ids = set()
     labels = set()
     for filename,family in data.get('fonts',{}).items():
@@ -122,6 +150,7 @@ def validate(data):
             raise ValueError(tr('角色顏色請使用 #RRGGBB 格式'))
     for s in data['sections']:
         identifier(s['id'])
+        identifier(label_name(data,s['id']))
         if s['id'] in labels:
             raise ValueError(tr('段落 ID 重複'))
         labels.add(s['id'])
@@ -141,7 +170,7 @@ def validate(data):
 
 def validate_action(row,labels):
     kind=row.get('kind','dialogue')
-    if kind not in ('dialogue','scene','show','hide','transition','menu','jump','call','return'):
+    if kind not in ('dialogue','scene','show','hide','transition','menu','jump','call','return','nvl_clear'):
         raise ValueError(tr('未知資料列類型：')+kind)
     if kind in ('scene','show','hide') and not re.fullmatch(r'[A-Za-z_][A-Za-z0-9_]*(?: [A-Za-z_][A-Za-z0-9_]*)*',row['text']):
         raise ValueError(tr('圖片標籤只可使用英數字、底線及空格'))
@@ -151,6 +180,10 @@ def validate_action(row,labels):
         raise ValueError(tr('請選擇轉場效果'))
     if kind in ('jump','call') and row['text'] not in labels:
         raise ValueError(tr('找不到分支目標：')+row['text'])
+    if kind=='nvl_clear' and (row['text'] or row['character']):
+        raise ValueError(tr('NVL 清頁指令不應包含角色或台詞。'))
+    if any(key in row and type(row[key]) is not bool for key in ('nvl_menu','nvl_clear_after')):
+        raise ValueError(tr('NVL 選項設定必須為開關值。'))
     if kind=='menu':
         if not row.get('choices'): raise ValueError(tr('選單至少需要一個選項'))
         for choice in row['choices']:
@@ -158,24 +191,41 @@ def validate_action(row,labels):
             if choice['target'] not in labels: raise ValueError(tr('找不到選項目標：')+choice['target'])
 
 
-def statement(row, include_ids=True):
+def statement(row, include_ids=True, label_prefix='adv_'):
     kind=row.get('kind','dialogue')
     if kind in ('scene','show','hide'):
         return kind+' '+row['text']+(' with '+row['transition'] if row.get('transition') and kind!='hide' else '')
     if kind=='transition': return 'with '+row['text']
-    if kind in ('jump','call'): return kind+' adv_'+row['text']
+    if kind in ('jump','call'): return kind+' '+label_prefix+row['text']
     if kind=='return': return 'return'
+    if kind=='nvl_clear': return 'nvl clear'
     if kind=='menu':
         lines=[]
-        if row['text']: lines.append(quote(row['text'])+(' id '+row['id'] if include_ids else ''))
-        lines.append('menu:')
+        nvl=row.get('nvl_menu',False)
+        if row['text']: lines.append(('nvl_narrator ' if nvl else '')+quote(row['text'])+(' id '+row['id'] if include_ids else ''))
+        lines.append('menu (nvl=True):' if nvl else 'menu:')
         for choice in row.get('choices',[]):
-            lines.extend(['    '+quote(choice['text'])+':','        jump adv_'+choice['target']])
+            lines.append('    '+quote(choice['text'])+':')
+            if nvl and row.get('nvl_clear_after',True): lines.append('        nvl clear')
+            lines.append('        jump '+label_prefix+choice['target'])
         return '\n'.join(lines)
     return (row['character'] + ' ' if row['character'] else '') + quote(row['text']) + (' id ' + row['id'] if include_ids else '')
 
 
-def export_rpy(data, folder, project_path=None, include_ids=True):
+GENERATED_HEADER = '# RenPy Text Editor — Generated file; do not edit manually'
+
+
+def valid_folder_name(name):
+    return bool(name.strip()) and name not in ('.', '..') and not any(c in name for c in '/\\\n\r\t\0:*?"<>|') and not name.endswith(('.', ' '))
+
+
+def remap_export_fonts(text, fonts, prefix):
+    # Match escaped braces as tokens so literal examples keep their original text.
+    mapping = {'{font=adv_generated/fonts/'+name+'}': '{font='+prefix+'fonts/'+name+'}' for name in fonts}
+    return re.sub(r'\{\{|\{[^{}\n]*\}', lambda match: mapping.get(match[0], match[0]), text)
+
+
+def export_rpy(data, folder, project_path=None, include_ids=True, *, subfolder='adv_generated', game_root=None):
     validate(data)
     font_sources = []
     image_sources = []
@@ -193,24 +243,44 @@ def export_rpy(data, folder, project_path=None, include_ids=True):
             source = font_file(project_path,filename)
             if not source.is_file(): raise ValueError(tr('找不到專案字體：')+str(source))
             font_sources.append((filename,source))
-    folder = Path(folder) / 'adv_generated'
+    base = Path(folder).expanduser().resolve()
+    if subfolder:
+        if not valid_folder_name(subfolder): raise ValueError(tr('無效的匯出資料夾名稱'))
+    folder = base / subfolder
+    root = Path(game_root).resolve() if game_root else next((p for p in (base,*base.parents) if p.name == 'game'),base)
+    try:
+        relative = folder.relative_to(root).as_posix()
+    except ValueError:
+        raise ValueError(tr('匯出資料夾必須位於 Ren’Py game 資料夾內。'))
+    prefix = '' if relative == '.' else relative + '/'
+    for name in ('characters.rpy','dialogue.rpy'):
+        existing = folder/name
+        if existing.exists() and not existing.read_text(encoding='utf-8').startswith(GENERATED_HEADER+'\n'):
+            raise FileExistsError(tr('為保留手寫內容，未覆寫既有檔案：')+str(existing))
     folder.mkdir(parents=True, exist_ok=True)
-    chars = '# RenPy Text Editor — Generated file; do not edit manually\n'
+    chars = GENERATED_HEADER + '\n'
     for cid, name in data['characters'].items():
         color = data.get('character_colors',{}).get(cid)
         option = ', color='+quote(color) if color else ''
+        if data.get('character_modes',{}).get(cid)=='nvl': option += ', kind=nvl'
         chars += f'define {cid} = Character(_({quote(name, True)}){option})\n'
+    if data.get('narrator_mode')=='nvl': chars += 'define narrator = nvl_narrator\n'
     for filename,tag in data.get('images',{}).items():
-        chars += 'image '+tag+' = '+quote('adv_generated/images/'+filename)+'\n'
-    lines = ['# RenPy Text Editor — Generated file; do not edit manually', '']
+        chars += 'image '+tag+' = '+quote(prefix+'images/'+filename)+'\n'
+    lines = [GENERATED_HEADER, '']
     for s in data['sections']:
-        lines.append('label adv_' + s['id'] + ':')
+        lines.append('label ' + label_name(data,s['id']) + ':')
         for r in s['rows']:
             if r['note']:
                 lines.extend('    # ' + n for n in r['note'].splitlines())
-            lines.extend('    '+line for line in statement(r,include_ids).splitlines())
+            exported = copy.deepcopy(r)
+            if exported.get('kind','dialogue') in ('dialogue','menu'):
+                exported['text'] = remap_export_fonts(exported['text'],data.get('fonts',{}),prefix)
+                for choice in exported.get('choices',[]):
+                    choice['text'] = remap_export_fonts(choice['text'],data.get('fonts',{}),prefix)
+            lines.extend('    '+line for line in statement(exported,include_ids,data.get('label_prefix','adv_')).splitlines())
         if s['call']:
-            lines.append('    call adv_' + s['call'])
+            lines.append('    call ' + label_name(data,s['call']))
         lines.extend(['    return', ''])
     for name, content in [('characters.rpy',chars), ('dialogue.rpy','\n'.join(lines))]:
         temporary = folder / (name + '.tmp')
@@ -247,16 +317,16 @@ def export_excel(data, path, project_path=None):
     ws.append(HEADERS)
     for s in data['sections']:
         for r in s['rows']:
-            ws.append([s['chapter'],s['id'],s['name'],s['call'],r['id'],r['character'],r['text'],r['note'],r.get('kind','dialogue'),r.get('transition',''),json.dumps(r['choices'],ensure_ascii=False) if 'choices' in r else ''])
+            ws.append([s['chapter'],s['id'],s['name'],s['call'],r['id'],r['character'],r['text'],r['note'],r.get('kind','dialogue'),r.get('transition',''),json.dumps(dict(choices=r['choices'],**{k:r[k] for k in ('nvl_menu','nvl_clear_after') if k in r}),ensure_ascii=False) if 'choices' in r and any(k in r for k in ('nvl_menu','nvl_clear_after')) else json.dumps(r['choices'],ensure_ascii=False) if 'choices' in r else ''])
     ws.freeze_panes = 'A2'
     for col in ws.columns:
         ws.column_dimensions[col[0].column_letter].width = 24
         for cell in col:
             cell.data_type = 's'  # Never turn dialogue into spreadsheet formulas.
     chars = wb.create_sheet('角色')
-    chars.append(['角色ID','名稱','顏色'])
+    chars.append(['角色ID','名稱','顏色','文字模式'])
     for cid, name in data['characters'].items():
-        chars.append([cid,name,data.get('character_colors',{}).get(cid,'')])
+        chars.append([cid,name,data.get('character_colors',{}).get(cid,''),data.get('character_modes',{}).get(cid,'adv')])
         for cell in chars[chars.max_row]:
             cell.data_type = 's'
     fonts = wb.create_sheet('字體')
@@ -267,6 +337,13 @@ def export_excel(data, path, project_path=None):
     images=wb.create_sheet('圖片')
     images.append(['圖片檔名','RenPy標籤'])
     for filename,tag in data.get('images',{}).items(): images.append([filename,tag])
+    if any(key in data for key in ('label_prefix','narrator_mode')):
+        options = wb.create_sheet('專案設定')
+        options.append(['key','value'])
+        for key in ('label_prefix','narrator_mode'):
+            if key in data: options.append([key,data[key]])
+        for row in options:
+            for cell in row: cell.data_type = 's'
     wb.save(path)
 
 
@@ -278,20 +355,30 @@ def import_excel(path):
         if headers not in (HEADERS,LEGACY_HEADERS):
             raise ValueError(tr('Excel 欄位不符合範本'))
         data = dict(characters={}, character_colors={}, fonts={}, images={}, sections=[])
+        if '專案設定' in wb.sheetnames:
+            for key,value,*_ in list(wb['專案設定'].values)[1:]:
+                if key in ('label_prefix','narrator_mode'): data[key] = '' if value is None else str(value)
         if '圖片' in wb.sheetnames:
             for filename,tag in list(wb['圖片'].values)[1:]:
                 if filename: data['images'][str(filename)]=str(tag or '')
         if '字體' in wb.sheetnames:
             for filename,family in list(wb['字體'].values)[1:]:
                 if filename: data['fonts'][str(filename)] = str(family or '')
-        for values in list(wb['角色'].values)[1:]:
+        character_rows=list(wb['角色'].values)
+        character_headers=list(character_rows[0])
+        color_column=character_headers.index('顏色') if '顏色' in character_headers else None
+        mode_column=character_headers.index('文字模式') if '文字模式' in character_headers else None
+        for values in character_rows[1:]:
             cid,name = values[:2]
-            color = values[2] if len(values)>2 else ''
+            color = values[color_column] if color_column is not None and len(values)>color_column else ''
             if cid:
                 if str(cid) in data['characters']:
                     raise ValueError(tr('角色 ID 重複'))
                 data['characters'][str(cid)] = str(name or '')
                 if color: data['character_colors'][str(cid)] = str(color)
+                mode=values[mode_column] if mode_column is not None and len(values)>mode_column else 'adv'
+                if mode not in (None,'','adv','nvl'): raise ValueError(tr('角色文字模式設定無效。'))
+                if mode=='nvl': data.setdefault('character_modes',{})[str(cid)]='nvl'
         by_id = {}
         for values in list(wb['台詞'].values)[1:]:
             chapter,sid,name,target,rid,cid,text,note = [str(v) if v is not None else '' for v in values[:8]]
@@ -304,7 +391,13 @@ def import_excel(path):
                 kind,transition,choices=values[8:11]
                 if kind and kind!='dialogue': row['kind']=str(kind)
                 if transition: row['transition']=str(transition)
-                if choices: row['choices']=json.loads(choices)
+                if choices:
+                    decoded=json.loads(choices)
+                    if isinstance(decoded,dict):
+                        row['choices']=decoded['choices']
+                        for key in ('nvl_menu','nvl_clear_after'):
+                            if key in decoded: row[key]=decoded[key]
+                    else: row['choices']=decoded
             by_id[sid]['rows'].append(row)
         if not data['sections']:
             raise ValueError(tr('Excel 沒有台詞'))

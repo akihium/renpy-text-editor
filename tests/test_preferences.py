@@ -1,3 +1,4 @@
+from adv_editor.preferences import settings
 import copy
 from PySide6.QtCore import Qt,QSettings
 from PySide6.QtWidgets import QApplication,QFileDialog,QDialog,QPushButton,QLabel
@@ -36,7 +37,8 @@ def test_export_id_switch_independent_of_preview(window,tmp_path,monkeypatch):
     w=window
     w.export_ids.setChecked(False)
     w.show_ids.setChecked(True)
-    monkeypatch.setattr(QFileDialog,'getExistingDirectory',lambda *a,**k:str(tmp_path))
+    from adv_editor.rpy_options import RenPyExportDialog
+    monkeypatch.setattr(RenPyExportDialog,'exec',lambda dialog: (dialog.directory.setText(str(tmp_path)),dialog.folder_name.setText('adv_generated'),True)[-1])
     w.export()
     source=(tmp_path/'adv_generated/dialogue.rpy').read_text()
     assert ' id d_' not in source
@@ -95,7 +97,7 @@ def test_language_changes_preserve_unsaved_project_and_selection(window):
 
 def test_language_persistence(window):
     window.language_combo.setCurrentIndex(window.language_combo.findData('en'))
-    assert QSettings('ADVScript','Editor').value('language')=='en'
+    assert settings().value('language')=='en'
     other=Window()
     assert other.section_button.text()=='Chapters / Sections'
     other.dirty=False;other.close()

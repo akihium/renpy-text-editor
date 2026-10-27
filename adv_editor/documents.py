@@ -36,6 +36,8 @@ def manuscript_records(data,include_ids=True):
                 for choice in row['choices']:
                     target = next(s for s in data['sections'] if s['id']==choice['target'])
                     yield 'note','• '+choice['text']+' → '+target['name'],row
+            elif kind == 'nvl_clear':
+                yield 'note',tr('〔NVL 清頁〕'),row
             elif kind != 'dialogue':
                 yield 'note',tr('〔演出〕')+row['text']+(' / '+row.get('transition','') if row.get('transition') else ''),row
             else:

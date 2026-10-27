@@ -84,11 +84,12 @@ def test_font_preview_format_roundtrip(window):
 
 def test_new_project_location_and_cancel(window,tmp_path,monkeypatch):
     old_data=copy.deepcopy(window.data);old_path=window.db.path
-    monkeypatch.setattr(QFileDialog,'getSaveFileName',lambda *a,**k:('',''))
+    monkeypatch.setattr(QFileDialog,'getExistingDirectory',lambda *a,**k:'')
     window.new_project()
     assert window.db.path==old_path and window.data==old_data
-    target=tmp_path/'new-project.advdb'
-    monkeypatch.setattr(QFileDialog,'getSaveFileName',lambda *a,**k:(str(target),''))
+    folder=tmp_path/'new-project';folder.mkdir()
+    target=folder/'new-project.advdb'
+    monkeypatch.setattr(QFileDialog,'getExistingDirectory',lambda *a,**k:str(folder))
     window.new_project()
     assert window.db.path==target and asset_folder(target).is_dir()
     assert len(window.rows)==1 and window.rows[0]['text']==''
