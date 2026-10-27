@@ -56,3 +56,14 @@ def test_windows_font_candidates_are_host_relative(monkeypatch,tmp_path):
     assert fonts.document_font_family()=='Microsoft JhengHei'
     assert fonts.pdf_font_candidates()[0]==tmp_path/'Windows'/'Fonts'/'msjh.ttc'
     assert fonts.pdf_font_candidates(bold=True)[0].name=='msjhbd.ttc'
+
+
+
+def test_frozen_export_checks_use_utf8_with_legacy_windows_defaults(monkeypatch,tmp_path):
+    from adv_editor.verify import verify_exports
+    read=Path.read_text
+    def legacy_read(path,encoding=None,errors=None):
+        return read(path,encoding=encoding or 'cp1252',errors=errors)
+    monkeypatch.setattr(Path,'read_text',legacy_read)
+    verify_exports(tmp_path)
+    assert json.loads((tmp_path/'result.json').read_text(encoding='utf-8'))['ok']

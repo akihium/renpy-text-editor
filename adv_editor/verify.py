@@ -7,8 +7,14 @@ from .platform_fonts import importable_system_font
 from .documents import export_word,export_pdf
 
 
+def progress(folder, message):
+    with (Path(folder)/'progress.txt').open('a',encoding='utf-8') as stream:
+        stream.write(message+'\n')
+
+
 def verify_exports(folder):
     folder=Path(folder);folder.mkdir(parents=True,exist_ok=True)
+    progress(folder,'Starting export verification')
     project=folder/'check.advdb'
     data=sample()
     data['sections'][0]['rows'][0]['text']='前半{w}{b}後半{/b}'
@@ -32,6 +38,7 @@ def verify_exports(folder):
     i18n.set_language(original_language)
     assert (folder/'check.docx').read_bytes()[:2]==b'PK'
     assert (folder/'check.pdf').read_bytes().startswith(b'%PDF')
+    progress(folder,'Exports passed; starting workspace verification')
     verify_workspace(folder,project)
     (folder/'result.json').write_text(json.dumps({'ok':True,'checks':['SQLite','fonts','Excel','RenPy menu','Word','PDF','Custom title','Optional IDs','EN / zh_CN / zh_TW / JA','Startup','Bundled editable samples','Keyboard navigation','Visual formatting','Batch row heights','Direct/custom RenPy folders','Configurable label prefix','About and bundled MIT license','Language discovery labels','NVL modes, page clears and choices']},ensure_ascii=False,indent=2),encoding='utf-8')
 
@@ -50,6 +57,7 @@ def verify_workspace(folder,project):
             db=Database(path)
             assert db.load()['sections']
             db.close()
+    progress(folder,'Bundled examples copied')
     launcher=StartupDialog()
     launcher.show();QApplication.processEvents()
     launcher.grab().save(str(folder/'startup.png'))
@@ -58,8 +66,9 @@ def verify_workspace(folder,project):
     nvl_db=Database(nvl_path);nvl_data=nvl_db.load();nvl_db.close()
     assert nvl_data['narrator_mode']=='nvl' and nvl_data['character_modes']
     nvl_export=export_rpy(nvl_data,folder/'nvl-game')
-    assert 'kind=nvl' in (nvl_export/'characters.rpy').read_text()
-    assert 'menu (nvl=True):' in (nvl_export/'dialogue.rpy').read_text()
+    assert 'kind=nvl' in (nvl_export/'characters.rpy').read_text(encoding='utf-8')
+    assert 'menu (nvl=True):' in (nvl_export/'dialogue.rpy').read_text(encoding='utf-8')
+    progress(folder,'NVL export passed')
     window=Window(project)
     from .sections import SectionDialog
     draft=SectionDialog(window.data,window.data['sections'][0]['id'])
@@ -98,9 +107,10 @@ def verify_workspace(folder,project):
     assert import_excel(folder/'prefix.xlsx')==window.data
     assert (folder/'custom-game'/'My script'/'dialogue.rpy').is_file()
     assert (folder/'direct-game'/'dialogue.rpy').is_file()
-    assert 'label story_opening:' in (folder/'custom-game'/'My script'/'dialogue.rpy').read_text()
-    assert 'jump story_greeting' in (folder/'custom-game'/'My script'/'dialogue.rpy').read_text()
-    assert 'label opening:' in (folder/'direct-game'/'dialogue.rpy').read_text()
+    assert 'label story_opening:' in (folder/'custom-game'/'My script'/'dialogue.rpy').read_text(encoding='utf-8')
+    assert 'jump story_greeting' in (folder/'custom-game'/'My script'/'dialogue.rpy').read_text(encoding='utf-8')
+    assert 'label opening:' in (folder/'direct-game'/'dialogue.rpy').read_text(encoding='utf-8')
+    progress(folder,'Keyboard, row heights, persistence and custom exports passed')
     from . import __version__
     assert 'Language /' in [label.text() for label in window.findChildren(QLabel)]
     assert 'Language /' in [label.text() for label in launcher.findChildren(QLabel)]
@@ -122,6 +132,7 @@ def verify_workspace(folder,project):
     QTimer.singleShot(0,check_help)
     window.show_help()
     assert help_checked==[True]
+    progress(folder,'About and Help passed')
     window.grab().save(str(folder/'editor.png'))
     window.dirty=False;window.close()
     QApplication.processEvents()

@@ -16,7 +16,13 @@ def main():
     app.setApplicationVersion(__version__)
     if checking:
         from adv_editor.verify import verify_exports
-        verify_exports(sys.argv[2])
+        try:
+            verify_exports(sys.argv[2])
+        except Exception:
+            import traceback
+            folder=Path(sys.argv[2]);folder.mkdir(parents=True,exist_ok=True)
+            (folder/'verify-error.txt').write_text(traceback.format_exc(),encoding='utf-8')
+            return 1
         return 0
     from adv_editor.startup import StartupDialog
     path = sys.argv[1] if len(sys.argv)>1 else None

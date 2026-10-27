@@ -7,8 +7,17 @@ if ($LASTEXITCODE -ne 0) { throw 'PyInstaller failed.' }
 & $Python scripts/prepare_distribution.py 'dist/RenPy Text Editor'
 if ($LASTEXITCODE -ne 0) { throw 'Release content preparation failed.' }
 $Verification = Join-Path $env:TEMP ('renpy-check-' + [guid]::NewGuid().ToString('N'))
-$Process = Start-Process -FilePath 'dist/RenPy Text Editor/RenPy Text Editor.exe' -ArgumentList @('--verify-exports', $Verification) -Wait -PassThru
-if ($Process.ExitCode -ne 0 -or -not (Test-Path "$Verification/result.json")) { throw 'Packaged EXE export check failed.' }
+$Process = Start-Process -FilePath 'dist/RenPy Text Editor/RenPy Text Editor.exe' -ArgumentList @('--verify-exports', $Verification) -PassThru
+if (-not $Process.WaitForExit(180000)) {
+    Stop-Process -Id $Process.Id -Force
+    if (Test-Path "$Verification/progress.txt") { Get-Content "$Verification/progress.txt" -Encoding utf8 | Write-Host }
+    throw 'Packaged EXE verification timed out.'
+}
+$Process.Refresh()
+if ($Process.ExitCode -ne 0 -or -not (Test-Path "$Verification/result.json")) {
+    if (Test-Path "$Verification/verify-error.txt") { Get-Content "$Verification/verify-error.txt" -Encoding utf8 | Write-Host }
+    throw 'Packaged EXE export check failed.'
+}
 $Result = Get-Content "$Verification/result.json" -Raw | ConvertFrom-Json
 if (-not $Result.ok) { throw 'Packaged EXE check returned failure.' }
 $Archive = 'dist/RenPy-Text-Editor-Windows-x64.zip'
